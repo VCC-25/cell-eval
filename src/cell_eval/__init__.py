@@ -18,6 +18,8 @@ from .metrics import metrics_registry
 __all__ = [
     # Evaluation
     "OptimizedMetricsEvaluator",
+    "_build_pdex_kwargs", 
+    "_convert_to_normlog_optimized",    
     # Baseline
     "build_base_mean_adata",
     # Scoring
