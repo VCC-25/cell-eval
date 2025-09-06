@@ -12,7 +12,7 @@ import pandas as pd
 import polars as pl
 from scipy.sparse import csr_matrix, issparse
 
-from .._evaluator import _convert_to_normlog
+from .._optimized_evaluator import _convert_to_normlog_optimized
 from ._const import DEFAULT_CELLTYPE_COL, DEFAULT_NTC_NAME, DEFAULT_PERT_COL
 
 logger = logging.getLogger(__name__)
@@ -215,7 +215,7 @@ def strip_anndata(
     )
 
     logger.info("Applying normlog transformation if required")
-    _convert_to_normlog(minimal, allow_discrete=allow_discrete)
+    _convert_to_normlog_optimized(minimal, allow_discrete=allow_discrete)
 
     # Create a temporary directory to work in
     with TemporaryDirectory() as temp_dir:

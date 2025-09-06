@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 from pdex import parallel_differential_expression
 from scipy.sparse import issparse
 
-from ._evaluator import _build_pdex_kwargs, _convert_to_normlog
+from ._optimized_evaluator import _build_pdex_kwargs, _convert_to_normlog_optimized
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def build_base_mean_adata(
         adata = ad.read_h5ad(adata)
 
     # Convert to normalized log space if necessary
-    _convert_to_normlog(adata=adata, allow_discrete=allow_discrete)
+    _convert_to_normlog_optimized(adata=adata, allow_discrete=allow_discrete)
 
     counts = (
         _load_counts_df(
