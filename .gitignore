@@ -13,3 +13,4 @@ dist/
 cell-eval-outdir/*
 TEST_OUTPUT_DIRECTORY/*
 **.csv
+*.log

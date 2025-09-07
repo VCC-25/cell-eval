@@ -133,55 +133,55 @@ class OptimizedMetricsEvaluator:
             os.makedirs(outdir, exist_ok=True)
             logger.info(f"Created output directory {outdir}")
 
-    def _build_anndata_pair_optimized(
-        self,
-        real: ad.AnnData | str,
-        pred: ad.AnnData | str,
-        control_pert: str,
-        pert_col: str,
-        allow_discrete: bool = False,
-    ) -> PerturbationAnndataPair:
-        """Optimized AnnData pair building with parallel I/O"""
-        
-        if self.parallel_io and isinstance(real, str) and isinstance(pred, str):
-            # Parallel loading
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                logger.info("🔄 Loading AnnData objects in parallel...")
-                real_future = executor.submit(self._load_anndata, real, "real")
-                pred_future = executor.submit(self._load_anndata, pred, "pred")
-                
-                real_adata = real_future.result()
-                pred_adata = pred_future.result()
-        else:
-            # Sequential loading
-            real_adata = self._load_anndata(real, "real") if isinstance(real, str) else real
-            pred_adata = self._load_anndata(pred, "pred") if isinstance(pred, str) else pred
+def _build_anndata_pair_optimized(
+    self,
+    real: ad.AnnData | str,
+    pred: ad.AnnData | str,
+    control_pert: str,
+    pert_col: str,
+    allow_discrete: bool = False,
+) -> PerturbationAnndataPair:
+    """Optimized AnnData pair building with parallel I/O"""
+    
+    if self.parallel_io and isinstance(real, str) and isinstance(pred, str):
+        # Parallel loading
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            logger.info("🔄 Loading AnnData objects in parallel...")
+            real_future = executor.submit(self._load_anndata, real, "real")
+            pred_future = executor.submit(self._load_anndata, pred, "pred")
+            
+            real_adata = real_future.result()
+            pred_adata = pred_future.result()
+    else:
+        # Sequential loading
+        real_adata = self._load_anndata(real, "real") if isinstance(real, str) else real
+        pred_adata = self._load_anndata(pred, "pred") if isinstance(pred, str) else pred
 
-        # Parallel normalization validation
-        if self.parallel_io:
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                logger.info("🔄 Validating normalization in parallel...")
-                real_future = executor.submit(
-                    self._convert_to_normlog_optimized, 
-                    real_adata, "real", allow_discrete
-                )
-                pred_future = executor.submit(
-                    self._convert_to_normlog_optimized, 
-                    pred_adata, "pred", allow_discrete
-                )
-                
-                real_future.result()
-                pred_future.result()
-        else:
-            self._convert_to_normlog_optimized(real_adata, "real", allow_discrete)
-            self._convert_to_normlog_optimized(pred_adata, "pred", allow_discrete)
+    # Parallel normalization validation
+    if self.parallel_io:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            logger.info("🔄 Validating normalization in parallel...")
+            real_future = executor.submit(
+                self._convert_to_normlog_optimized, 
+                real_adata, "real", allow_discrete
+            )
+            pred_future = executor.submit(
+                self._convert_to_normlog_optimized, 
+                pred_adata, "pred", allow_discrete
+            )
+            
+            real_future.result()
+            pred_future.result()
+    else:
+        self._convert_to_normlog_optimized(real_adata, "real", allow_discrete)
+        self._convert_to_normlog_optimized(pred_adata, "pred", allow_discrete)
 
-        return PerturbationAnndataPair(
-            real=real_adata, 
-            pred=pred_adata, 
-            control_pert=control_pert, 
-            pert_col=pert_col
-        )
+    return PerturbationAnndataPair(
+        real=real_adata, 
+        pred=pred_adata, 
+        control_pert=control_pert, 
+        pert_col=pert_col
+    )
 
 @lru_cache(maxsize=4)
 def _load_anndata(self, path: str, which: str) -> ad.AnnData:
