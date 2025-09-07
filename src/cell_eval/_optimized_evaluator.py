@@ -183,7 +183,7 @@ def _build_anndata_pair_optimized(
         pert_col=pert_col
     )
 
-@lru_cache(maxsize=4)
+#@lru_cache(maxsize=4)
 def _load_anndata(self, path: str, which: str) -> ad.AnnData:
     """Cached AnnData loading"""
     logger.info(f"📖 Loading {which} anndata from {path}")
