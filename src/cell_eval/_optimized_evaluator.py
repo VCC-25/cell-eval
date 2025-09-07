@@ -53,6 +53,40 @@ except ImportError:
     ENHANCED_MP_AVAILABLE = False
     warnings.warn("Enhanced multiprocessing not available. Using standard implementation.")
 
+# === PDEX SPEED OPTIMIZATION START ===
+#import os
+import multiprocessing as mp
+
+# Force single-threading for PDEX
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+# Set multiprocessing method
+try:
+    mp.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass  # Already set
+
+# PDEX-safe progress bars
+def _pdex_tqdm_wrapper(original_tqdm):
+    def wrapper(*args, **kwargs):
+        if mp.current_process().name != 'MainProcess':
+            kwargs['disable'] = True
+        return original_tqdm(*args, **kwargs)
+    return wrapper
+
+try:
+    import tqdm
+    if not hasattr(tqdm.tqdm, '_pdex_wrapped'):
+        tqdm.tqdm._original = tqdm.tqdm.__init__
+        tqdm.tqdm.__init__ = _pdex_tqdm_wrapper(tqdm.tqdm._original)
+        tqdm.tqdm._pdex_wrapped = True
+except ImportError:
+    pass
+# === PDEX SPEED OPTIMIZATION END ===
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,7 +137,7 @@ class OptimizedMetricsEvaluator:
         self.enable_caching = enable_caching
         self.parallel_io = parallel_io
         self.memory_efficient = memory_efficient
-        self.max_workers = max_workers or min(2, mp.cpu_count())
+        self.max_workers = max_workers or min(8, 1)
         
         # Setup output directory
         if os.path.exists(outdir):
@@ -114,7 +148,7 @@ class OptimizedMetricsEvaluator:
         
         # Optimize num_threads
         if num_threads == -1:
-            num_threads = min(self.max_workers, mp.cpu_count())
+            num_threads = min(self.max_workers, 1)
         
         # Build components with optimization
         self.anndata_pair = _build_anndata_pair_optimized(
@@ -498,7 +532,8 @@ def _build_de_comparison_optimized(
     
     if parallel_io and de_pred is None and de_real is None:
         # Parallel DE computation
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        #with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with ProcessPoolExecutor(max_workers=1, max_workers=2) as executor:
             logger.info("🔄 Computing DE in parallel...")
             
             real_future = executor.submit(

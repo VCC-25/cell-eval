@@ -40,6 +40,40 @@ except ImportError:
 # Setup logging
 logger = logging.getLogger(__name__)
 
+# === PDEX SPEED OPTIMIZATION START ===
+#import os
+import multiprocessing as mp
+
+# Force single-threading for PDEX
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+# Set multiprocessing method
+try:
+    mp.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass  # Already set
+
+# PDEX-safe progress bars
+def _pdex_tqdm_wrapper(original_tqdm):
+    def wrapper(*args, **kwargs):
+        if mp.current_process().name != 'MainProcess':
+            kwargs['disable'] = True
+        return original_tqdm(*args, **kwargs)
+    return wrapper
+
+try:
+    import tqdm
+    if not hasattr(tqdm.tqdm, '_pdex_wrapped'):
+        tqdm.tqdm._original = tqdm.tqdm.__init__
+        tqdm.tqdm.__init__ = _pdex_tqdm_wrapper(tqdm.tqdm._original)
+        tqdm.tqdm._pdex_wrapped = True
+except ImportError:
+    pass
+# === PDEX SPEED OPTIMIZATION END ===
+
 # Global configuration
 ROBUST_MP_CONFIG = {
     'max_memory_per_process': 8 * 1024 * 1024 * 1024,  # 8GB
@@ -209,7 +243,7 @@ class RobustProcessPool:
         **kwargs
     ):
         
-        self.max_workers = max_workers or min(2, os.cpu_count() or 4)
+        self.max_workers = max_workers or min(2, 1 or 4)
         self.max_memory_per_process = max_memory_per_process
         self.process_timeout = process_timeout
         self.enable_monitoring = enable_monitoring and PSUTIL_AVAILABLE
@@ -232,14 +266,15 @@ class RobustProcessPool:
         """Start the process pool"""
         try:
             # Set multiprocessing start method
-            if hasattr(mp, 'set_start_method'):
+            '''if hasattr(mp, 'set_start_method'):
                 try:
                     mp.set_start_method('spawn', force=True)
                 except RuntimeError:
                     pass  # Already set
-            
+            '''
+            mp.set_start_method('spawn', force=True)
             self.pool = ProcessPoolExecutor(
-                max_workers=self.max_workers,
+                max_workers=1,
                 mp_context=mp.get_context('spawn') if hasattr(mp, 'get_context') else None
             )
             
@@ -449,14 +484,15 @@ def setup_robust_multiprocessing(
         })
         
         # Set multiprocessing start method
-        if hasattr(mp, 'set_start_method'):
+        '''if hasattr(mp, 'set_start_method'):
             try:
                 # Use spawn for better isolation
                 mp.set_start_method('spawn', force=True)
                 logger.info("✅ Set multiprocessing start method to 'spawn'")
             except RuntimeError as e:
                 logger.info(f"Multiprocessing start method already set: {e}")
-        
+        '''
+        mp.set_start_method('spawn', force=True) 
         # Configure process monitoring
         global _process_monitor
         _process_monitor = ProcessMonitor(max_memory_mb=max_memory_per_process)
@@ -621,7 +657,8 @@ def robust_parallel_map(
         if show_progress:
             try:
                 from tqdm import tqdm
-                progress_bar = tqdm(total=len(items), desc="Processing")
+                #progress_bar = tqdm(total=len(items), desc="Processing")
+                progress_bar = tqdm(disable=(mp.current_process().name != "MainProcess"), total=len(items), desc="Processing")
             except ImportError:
                 progress_bar = None
         else:
@@ -764,7 +801,7 @@ def get_optimal_worker_count(
     """
     
     # Get system info
-    cpu_count = os.cpu_count() or 4
+    cpu_count = 1 or 4
     
     if PSUTIL_AVAILABLE:
         memory_gb = psutil.virtual_memory().total / (1024**3)

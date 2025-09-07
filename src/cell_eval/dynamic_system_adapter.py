@@ -33,6 +33,40 @@ try:
 except ImportError:
     HAS_CPUINFO = False
 
+# === PDEX SPEED OPTIMIZATION START ===
+#import os
+#import multiprocessing as mp
+
+# Force single-threading for PDEX
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+# Set multiprocessing method
+try:
+    mp.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass  # Already set
+
+# PDEX-safe progress bars
+def _pdex_tqdm_wrapper(original_tqdm):
+    def wrapper(*args, **kwargs):
+        if mp.current_process().name != 'MainProcess':
+            kwargs['disable'] = True
+        return original_tqdm(*args, **kwargs)
+    return wrapper
+
+try:
+    import tqdm
+    if not hasattr(tqdm.tqdm, '_pdex_wrapped'):
+        tqdm.tqdm._original = tqdm.tqdm.__init__
+        tqdm.tqdm.__init__ = _pdex_tqdm_wrapper(tqdm.tqdm._original)
+        tqdm.tqdm._pdex_wrapped = True
+except ImportError:
+    pass
+# === PDEX SPEED OPTIMIZATION END ===
+
 
 @dataclass
 class SystemSpecs:
@@ -159,7 +193,7 @@ class DynamicSystemAdapter:
         
         try:
             # Get basic system info
-            cpu_count = mp.cpu_count()
+            cpu_count = 1 #mp.cpu_count()
             memory = psutil.virtual_memory()
             
             # Get CPU frequency
