@@ -40,6 +40,19 @@ except ImportError:
     ROBUST_MP_AVAILABLE = False
     warnings.warn("Robust multiprocessing fixes not available")
 
+import warnings
+from typing import Optional, Dict, Any, Union, Callable
+from contextlib import contextmanager
+
+# Try to import new modules
+try:
+    from .dynamic_system_adapter import DynamicSystemAdapter, get_optimal_config
+    from .robust_mp_integration import AutoRobustProcessPool
+    ENHANCED_MP_AVAILABLE = True
+except ImportError:
+    ENHANCED_MP_AVAILABLE = False
+    warnings.warn("Enhanced multiprocessing not available. Using standard implementation.")
+
 logger = logging.getLogger(__name__)
 
 
@@ -133,6 +146,7 @@ class OptimizedMetricsEvaluator:
         
         init_time = time.time() - start_time
         logger.info(f"✅ OptimizedMetricsEvaluator initialized in {init_time:.2f}s")
+        
 
     def compute(
         self,
@@ -179,6 +193,197 @@ class OptimizedMetricsEvaluator:
         logger.info(f"✅ Metrics computed in {compute_time:.2f}s")
         
         return results, agg_results
+    
+    def __init__(self, *args, **kwargs):
+        # Your existing __init__ code...
+        
+        # Add these new attributes at the end of __init__
+        self._enhanced_mp_enabled = ENHANCED_MP_AVAILABLE
+        self._dynamic_adapter = None
+        self._auto_pool = None
+        self._performance_history = []
+        
+        # Initialize enhanced multiprocessing if available
+        if self._enhanced_mp_enabled and kwargs.get('enable_enhanced_mp', True):
+            self._initialize_enhanced_mp(kwargs.get('workload_type', 'general'))
+    
+    def _initialize_enhanced_mp(self, workload_type: str = 'general'):
+        """Initialize enhanced multiprocessing components"""
+        try:
+            self._dynamic_adapter = DynamicSystemAdapter()
+            self._auto_pool = AutoRobustProcessPool(
+                workload_type=workload_type,
+                enable_monitoring=True,
+                auto_tune=True
+            )
+            print(f"✅ Enhanced multiprocessing initialized for {workload_type} workload")
+        except Exception as e:
+            warnings.warn(f"Failed to initialize enhanced multiprocessing: {e}")
+            self._enhanced_mp_enabled = False
+    
+    @contextmanager
+    def enhanced_processing_context(self, 
+                                  workload_type: Optional[str] = None,
+                                  force_config: Optional[Dict] = None):
+        """
+        Context manager for enhanced multiprocessing
+        
+        Usage:
+            with evaluator.enhanced_processing_context('cpu_intensive'):
+                results = evaluator.evaluate_batch(cells)
+        """
+        if not self._enhanced_mp_enabled:
+            # Fallback to standard processing
+            yield self
+            return
+        
+        # Store original configuration
+        original_config = getattr(self, '_mp_config', {})
+        
+        try:
+            # Apply enhanced configuration
+            if force_config:
+                config = force_config
+            elif workload_type:
+                config = get_optimal_config(workload_type)
+            else:
+                config = self._dynamic_adapter.get_current_config()
+            
+            # Update evaluator configuration
+            self._apply_enhanced_config(config)
+            
+            yield self
+            
+        finally:
+            # Restore original configuration
+            self._apply_enhanced_config(original_config)
+    
+    def _apply_enhanced_config(self, config: Dict[str, Any]):
+        """Apply enhanced configuration to evaluator"""
+        if not config:
+            return
+        
+        # Update process count
+        if 'process_count' in config:
+            self.process_count = config['process_count']
+        
+        # Update chunk size
+        if 'chunk_size' in config:
+            self.chunk_size = config['chunk_size']
+        
+        # Update timeout settings
+        if 'timeout' in config:
+            self.timeout = config['timeout']
+        
+        # Apply any other configuration parameters
+        for key, value in config.items():
+            if hasattr(self, key) and key not in ['process_count', 'chunk_size', 'timeout']:
+                setattr(self, key, value)
+    
+    def evaluate_with_auto_tuning(self, 
+                                cells: list,
+                                workload_type: str = 'general',
+                                enable_monitoring: bool = True) -> Dict[str, Any]:
+        """
+        Evaluate cells with automatic performance tuning
+        
+        Args:
+            cells: List of cells to evaluate
+            workload_type: Type of workload for optimization
+            enable_monitoring: Enable performance monitoring
+        
+        Returns:
+            Dict containing results and performance metrics
+        """
+        if not self._enhanced_mp_enabled:
+            # Fallback to standard evaluation
+            return {'results': self.evaluate(cells), 'enhanced': False}
+        
+        start_time = time.time()
+        
+        with self.enhanced_processing_context(workload_type):
+            # Use auto pool for evaluation
+            if self._auto_pool:
+                results = self._auto_pool.map(self._evaluate_single_cell, cells)
+            else:
+                results = self.evaluate(cells)
+        
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # Record performance metrics
+        performance_metrics = {
+            'execution_time': execution_time,
+            'cells_processed': len(cells),
+            'cells_per_second': len(cells) / execution_time if execution_time > 0 else 0,
+            'workload_type': workload_type,
+            'enhanced': True
+        }
+        
+        if enable_monitoring:
+            self._performance_history.append(performance_metrics)
+        
+        return {
+            'results': results,
+            'performance': performance_metrics,
+            'enhanced': True
+        }
+    
+    def get_performance_report(self) -> Dict[str, Any]:
+        """Get detailed performance report"""
+        if not self._performance_history:
+            return {'message': 'No performance data available'}
+        
+        # Calculate statistics
+        execution_times = [p['execution_time'] for p in self._performance_history]
+        cells_per_second = [p['cells_per_second'] for p in self._performance_history]
+        
+        return {
+            'total_evaluations': len(self._performance_history),
+            'average_execution_time': sum(execution_times) / len(execution_times),
+            'min_execution_time': min(execution_times),
+            'max_execution_time': max(execution_times),
+            'average_cells_per_second': sum(cells_per_second) / len(cells_per_second),
+            'max_cells_per_second': max(cells_per_second),
+            'enhanced_mp_enabled': self._enhanced_mp_enabled,
+            'history': self._performance_history[-10:]  # Last 10 evaluations
+        }
+    
+    def benchmark_current_system(self) -> Dict[str, Any]:
+        """Benchmark current system performance"""
+        if not self._enhanced_mp_enabled:
+            return {'error': 'Enhanced multiprocessing not available'}
+        
+        if self._dynamic_adapter:
+            return self._dynamic_adapter.benchmark_system()
+        else:
+            return {'error': 'Dynamic adapter not initialized'}
+    
+    def optimize_for_workload(self, workload_type: str) -> bool:
+        """Optimize evaluator for specific workload type"""
+        if not self._enhanced_mp_enabled:
+            return False
+        
+        try:
+            config = get_optimal_config(workload_type)
+            self._apply_enhanced_config(config)
+            print(f"✅ Optimized for {workload_type} workload")
+            return True
+        except Exception as e:
+            warnings.warn(f"Failed to optimize for workload {workload_type}: {e}")
+            return False
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - cleanup resources"""
+        if self._auto_pool:
+            try:
+                self._auto_pool.close()
+            except:
+                pass
 
 
 # =============================================================================
