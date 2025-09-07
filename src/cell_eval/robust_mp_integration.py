@@ -63,11 +63,18 @@ print(f"🚀 Parallelisierung: {OPTIMAL_WORKERS} Workers, {OPTIMAL_THREADS} Thre
 # === ENDE SETUP ===
 
 # Set multiprocessing method
+import platform
 try:
-    mp.set_start_method('spawn', force=True)
-except RuntimeError:
-    pass  # Already set
-
+    if platform.system() in ['Linux', 'Darwin']:  # Linux/Mac
+        mp.set_start_method('fork', force=True)
+        print("🚀 Fork method aktiviert (schnell + stabil)")
+    else:  # Windows
+        mp.set_start_method('spawn', force=True)
+        print("⚠️ Spawn method (Windows)")
+except RuntimeError as e:
+    current_method = mp.get_start_method()
+    print(f"ℹ️ Start method bereits gesetzt: {current_method}")
+    
 # PDEX-safe progress bars
 def _pdex_tqdm_wrapper(original_tqdm):
     def wrapper(*args, **kwargs):
