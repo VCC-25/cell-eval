@@ -560,8 +560,8 @@ def _build_de_comparison_optimized(
     
     if parallel_io and de_pred is None and de_real is None:
         # Parallel DE computation
-        #with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        with ProcessPoolExecutor(max_workers=1, max_workers=2) as executor:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        #with ProcessPoolExecutor(max_workers=1, max_workers=2) as executor:
             logger.info("🔄 Computing DE in parallel...")
             
             real_future = executor.submit(

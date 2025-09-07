@@ -83,8 +83,9 @@ try:
         mp.set_start_method('fork', force=True)
         print("🚀 Fork method aktiviert (schnell + stabil)")
     else:  # Windows
-        mp.set_start_method('spawn', force=True)
         print("⚠️ Spawn method (Windows)")
+        mp.set_start_method('spawn', force=True)
+        
 except RuntimeError as e:
     current_method = mp.get_start_method()
     print(f"ℹ️ Start method bereits gesetzt: {current_method}")
