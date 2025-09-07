@@ -26,7 +26,9 @@ from functools import wraps, partial
 from contextlib import contextmanager
 import gc
 import traceback
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+#from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor as ProcessPoolExecutor, as_completed
+
 import queue
 
 # Try to import psutil, fallback if not available
@@ -48,7 +50,7 @@ import multiprocessing as mp
 import os
 import multiprocessing as mp
 import psutil
-from concurrent.futures import ProcessPoolExecutor, as_completed
+
 
 # Intelligente Ressourcen-Erkennung
 def get_optimal_workers():

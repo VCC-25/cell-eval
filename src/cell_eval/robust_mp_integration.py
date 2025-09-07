@@ -18,7 +18,9 @@ import queue
 import warnings
 from typing import Dict, Any, Optional, List, Callable, Union, Tuple
 from dataclasses import dataclass, field
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+#from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor as ProcessPoolExecutor
+
 from multiprocessing import Manager, Queue, Event, Value
 import multiprocessing as mp
 
@@ -36,7 +38,7 @@ except ImportError:
 import os
 import multiprocessing as mp
 import psutil
-from concurrent.futures import ProcessPoolExecutor, as_completed
+
 
 # Intelligente Ressourcen-Erkennung
 def get_optimal_workers():
@@ -74,7 +76,7 @@ try:
 except RuntimeError as e:
     current_method = mp.get_start_method()
     print(f"ℹ️ Start method bereits gesetzt: {current_method}")
-    
+
 # PDEX-safe progress bars
 def _pdex_tqdm_wrapper(original_tqdm):
     def wrapper(*args, **kwargs):

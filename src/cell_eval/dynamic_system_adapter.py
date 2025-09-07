@@ -38,7 +38,9 @@ except ImportError:
 import os
 import multiprocessing as mp
 import psutil
-from concurrent.futures import ProcessPoolExecutor, as_completed
+#from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor as ProcessPoolExecutor
+
 
 # Intelligente Ressourcen-Erkennung
 def get_optimal_workers():
