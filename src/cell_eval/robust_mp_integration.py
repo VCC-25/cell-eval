@@ -29,6 +29,36 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
+# === PDEX SPEED OPTIMIZATION START ===
+import os
+import multiprocessing as mp
+import psutil
+
+# Intelligente Ressourcen-Erkennung
+def get_optimal_workers():
+    cpu_count = mp.cpu_count()
+    if HAS_PSUTIL:
+        memory_gb = psutil.virtual_memory().available / (1024**3)
+        
+        if memory_gb > 16:  # Viel RAM
+            return min(cpu_count, 8)
+        elif memory_gb > 8:  # Mittlerer RAM
+            return min(cpu_count, 4)
+        else:  # Wenig RAM
+            return min(cpu_count, 2)
+    else:
+        return min(cpu_count, 4)  # Conservative default
+
+OPTIMAL_WORKERS = get_optimal_workers()
+OPTIMAL_THREADS = max(1, OPTIMAL_WORKERS // 2)
+
+# Multi-Threading Environment
+os.environ['OMP_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['MKL_NUM_THREADS'] = str(OPTIMAL_THREADS) 
+os.environ['NUMEXPR_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['OPENBLAS_NUM_THREADS'] = str(OPTIMAL_THREADS)
+
+print(f"🚀 Parallelisierung: {OPTIMAL_WORKERS} Workers, {OPTIMAL_THREADS} Threads/Worker")
 
 @dataclass
 class ProcessMetrics:
@@ -553,3 +583,98 @@ def robust_map(func: Callable, iterable,
         auto_tune=True
     ) as pool:
         return pool.map(func, iterable, timeout)
+    
+def auto_pool(max_workers: Optional[int] = None, 
+              workload_type: str = 'general',
+              **kwargs) -> AutoRobustProcessPool:
+    """
+    Create an automatic robust process pool
+    
+    Args:
+        max_workers: Maximum number of workers (auto-detected if None)
+        workload_type: Type of workload ('general', 'cpu_intensive', 'memory_intensive')
+        **kwargs: Additional arguments for AutoRobustProcessPool
+    
+    Returns:
+        AutoRobustProcessPool instance
+    """
+    if max_workers is None:
+        if workload_type == 'cpu_intensive':
+            max_workers = OPTIMAL_WORKERS
+        elif workload_type == 'memory_intensive':
+            max_workers = max(1, OPTIMAL_WORKERS // 2)
+        else:
+            max_workers = min(OPTIMAL_WORKERS, 4)
+    
+    return AutoRobustProcessPool(
+        max_workers=max_workers,
+        workload_type=workload_type,
+        **kwargs
+    )
+
+
+def process_batch(tasks: List[Any], 
+                  task_function: Callable,
+                  max_workers: Optional[int] = None,
+                  timeout: Optional[float] = None,
+                  show_progress: bool = True) -> List[Any]:
+    """
+    Process a batch of tasks with automatic pool management
+    
+    Args:
+        tasks: List of tasks to process
+        task_function: Function to process each task
+        max_workers: Number of workers (auto-detected if None)
+        timeout: Timeout in seconds
+        show_progress: Show progress bar
+    
+    Returns:
+        List of results
+    """
+    pool = auto_pool(max_workers=max_workers)
+    
+    try:
+        pool.start()
+        pool.submit_tasks(tasks, task_function)
+        
+        if show_progress:
+            try:
+                import tqdm
+                with tqdm.tqdm(total=len(tasks), desc="Processing") as pbar:
+                    results = []
+                    while len(results) < len(tasks):
+                        batch_results = pool.get_results(timeout=1.0)
+                        new_results = len(batch_results) - len(results)
+                        if new_results > 0:
+                            pbar.update(new_results)
+                        results = batch_results
+                    return results
+            except ImportError:
+                return pool.get_results(timeout=timeout)
+        else:
+            return pool.get_results(timeout=timeout)
+    
+    finally:
+        pool.shutdown()
+
+
+# Convenience functions
+def get_system_info() -> Dict[str, Any]:
+    """Get system information for optimization"""
+    info = {
+        'cpu_count': mp.cpu_count(),
+        'optimal_workers': OPTIMAL_WORKERS,
+        'optimal_threads': OPTIMAL_THREADS,
+        'platform': platform.system(),
+        'mp_method': mp.get_start_method(),
+        'has_psutil': HAS_PSUTIL
+    }
+    
+    if HAS_PSUTIL:
+        info.update({
+            'memory_total_gb': psutil.virtual_memory().total / (1024**3),
+            'memory_available_gb': psutil.virtual_memory().available / (1024**3),
+            'cpu_freq_mhz': psutil.cpu_freq().current if psutil.cpu_freq() else None
+        })
+    
+    return info
