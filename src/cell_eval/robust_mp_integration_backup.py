@@ -18,6 +18,7 @@ import queue
 import warnings
 from typing import Dict, Any, Optional, List, Callable, Union, Tuple
 from dataclasses import dataclass, field
+#from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor as ProcessPoolExecutor
 
 from multiprocessing import Manager, Queue, Event, Value
@@ -31,24 +32,25 @@ except ImportError:
     HAS_PSUTIL = False
 
 # === PDEX SPEED OPTIMIZATION START ===
+#import os
+#import multiprocessing as mp
+# === ECHTE PARALLELISIERUNG SETUP ===
 import os
 import multiprocessing as mp
 import psutil
 
+
 # Intelligente Ressourcen-Erkennung
 def get_optimal_workers():
     cpu_count = mp.cpu_count()
-    if HAS_PSUTIL:
-        memory_gb = psutil.virtual_memory().available / (1024**3)
-        
-        if memory_gb > 16:  # Viel RAM
-            return min(cpu_count, 8)
-        elif memory_gb > 8:  # Mittlerer RAM
-            return min(cpu_count, 4)
-        else:  # Wenig RAM
-            return min(cpu_count, 2)
-    else:
-        return min(cpu_count, 4)  # Conservative default
+    memory_gb = psutil.virtual_memory().available / (1024**3)
+    
+    if memory_gb > 16:  # Viel RAM
+        return min(cpu_count, 8)
+    elif memory_gb > 8:  # Mittlerer RAM
+        return min(cpu_count, 4)
+    else:  # Wenig RAM
+        return min(cpu_count, 2)
 
 OPTIMAL_WORKERS = get_optimal_workers()
 OPTIMAL_THREADS = max(1, OPTIMAL_WORKERS // 2)
@@ -60,6 +62,7 @@ os.environ['NUMEXPR_NUM_THREADS'] = str(OPTIMAL_THREADS)
 os.environ['OPENBLAS_NUM_THREADS'] = str(OPTIMAL_THREADS)
 
 print(f"🚀 Parallelisierung: {OPTIMAL_WORKERS} Workers, {OPTIMAL_THREADS} Threads/Worker")
+# === ENDE SETUP ===
 
 # Set multiprocessing method
 import platform
@@ -237,7 +240,7 @@ class AutoRobustProcessPool:
             error_threshold: Error rate threshold for worker restart
             restart_threshold: Number of errors before restarting worker
         """
-        self.max_workers = max_workers or OPTIMAL_WORKERS
+        self.max_workers = max_workers or 1
         self.workload_type = workload_type
         self.enable_monitoring = enable_monitoring
         self.auto_tune = auto_tune
@@ -293,6 +296,9 @@ class AutoRobustProcessPool:
     
     def _start_worker(self, worker_id: int):
         """Start a single worker process"""
+        if worker_id in self.workers and self.workers[worker_id].is_alive():
+            return
+        
         worker = RobustWorkerProcess(
             worker_id=worker_id,
             task_queue=self.task_queue,
@@ -304,277 +310,346 @@ class AutoRobustProcessPool:
         
         process = mp.Process(target=worker.run, args=(self._default_task_function,))
         process.start()
+        
         self.workers[worker_id] = process
+        print(f"✅ Started worker {worker_id} (PID: {process.pid})")
     
     def _default_task_function(self, task):
-        """Default task function - should be overridden"""
-        return task
+        """Default task function - can be overridden"""
+        if callable(task):
+            return task()
+        elif isinstance(task, (list, tuple)) and len(task) >= 2:
+            func, args = task[0], task[1:]
+            return func(*args)
+        else:
+            return task
     
     def _start_monitoring(self):
         """Start monitoring threads"""
-        self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
-        self.error_monitor_thread = threading.Thread(target=self._error_monitor_loop, daemon=True)
-        
+        # Metrics monitoring
+        self.monitor_thread = threading.Thread(
+            target=self._monitor_loop,
+            daemon=True
+        )
         self.monitor_thread.start()
+        
+        # Error monitoring
+        self.error_monitor_thread = threading.Thread(
+            target=self._error_monitor_loop,
+            daemon=True
+        )
         self.error_monitor_thread.start()
     
     def _monitor_loop(self):
-        """Monitor worker performance"""
+        """Main monitoring loop"""
         while self.is_running:
             try:
-                metrics = self.metrics_queue.get(timeout=1.0)
-                self.worker_metrics[metrics.process_id] = metrics
+                # Collect metrics
+                while not self.metrics_queue.empty():
+                    try:
+                        metrics = self.metrics_queue.get_nowait()
+                        self.worker_metrics[metrics.process_id] = metrics
+                    except queue.Empty:
+                        break
                 
-                # Auto-tuning
-                if self.auto_tune and time.time() - self.last_tune_time > self.tune_interval:
+                # Check for dead workers
+                self._check_worker_health()
+                
+                # Auto-tune if enabled
+                if (self.auto_tune and 
+                    time.time() - self.last_tune_time > self.tune_interval):
                     self._auto_tune()
                     self.last_tune_time = time.time()
-                    
-            except queue.Empty:
-                continue
+                
+                time.sleep(1.0)
+                
             except Exception as e:
-                print(f"Monitor error: {e}")
+                warnings.warn(f"Monitoring error: {e}")
     
     def _error_monitor_loop(self):
-        """Monitor and handle errors"""
+        """Error monitoring loop"""
         while self.is_running:
             try:
-                error_info = self.error_queue.get(timeout=1.0)
-                worker_id = error_info.get('worker_id')
+                while not self.error_queue.empty():
+                    try:
+                        error_info = self.error_queue.get_nowait()
+                        self._handle_worker_error(error_info)
+                    except queue.Empty:
+                        break
                 
-                if worker_id is not None:
-                    # Check if worker needs restart
-                    metrics = self.worker_metrics.get(worker_id)
-                    if metrics and len(metrics.errors) >= self.restart_threshold:
-                        self._restart_worker(worker_id)
-                        
-            except queue.Empty:
-                continue
+                time.sleep(0.5)
+                
             except Exception as e:
-                print(f"Error monitor error: {e}")
+                warnings.warn(f"Error monitoring error: {e}")
+    
+    def _handle_worker_error(self, error_info: Dict[str, Any]):
+        """Handle worker errors"""
+        worker_id = error_info.get('worker_id')
+        error_msg = error_info.get('error', 'Unknown error')
+        
+        print(f"⚠️  Worker {worker_id} error: {error_msg}")
+        
+        # Check if worker needs restart
+        if worker_id in self.worker_metrics:
+            metrics = self.worker_metrics[worker_id]
+            error_rate = metrics.tasks_failed / max(1, metrics.tasks_completed + metrics.tasks_failed)
+            
+            if (error_rate > self.error_threshold or 
+                len(metrics.errors) >= self.restart_threshold):
+                print(f"🔄 Restarting worker {worker_id} due to high error rate")
+                self._restart_worker(worker_id)
     
     def _restart_worker(self, worker_id: int):
-        """Restart a failed worker"""
-        try:
-            # Terminate old worker
-            if worker_id in self.workers:
+        """Restart a specific worker"""
+        # Terminate old worker
+        if worker_id in self.workers:
+            try:
                 self.workers[worker_id].terminate()
-                self.workers[worker_id].join(timeout=5.0)
-                del self.workers[worker_id]
-            
-            # Start new worker
-            self._start_worker(worker_id)
-            print(f"🔄 Worker {worker_id} restarted")
-            
-        except Exception as e:
-            print(f"Failed to restart worker {worker_id}: {e}")
+                self.workers[worker_id].join(timeout=5)
+            except:
+                pass
+        
+        # Start new worker
+        self._start_worker(worker_id)
+    
+    def _check_worker_health(self):
+        """Check health of all workers"""
+        for worker_id, process in list(self.workers.items()):
+            if not process.is_alive():
+                print(f"💀 Worker {worker_id} died, restarting...")
+                self._restart_worker(worker_id)
     
     def _auto_tune(self):
-        """Automatically tune performance parameters"""
+        """Automatic performance tuning"""
         if not self.worker_metrics:
             return
         
-        # Calculate overall performance
+        # Calculate current performance metrics
         total_completed = sum(m.tasks_completed for m in self.worker_metrics.values())
         total_failed = sum(m.tasks_failed for m in self.worker_metrics.values())
-        error_rate = total_failed / (total_completed + total_failed) if (total_completed + total_failed) > 0 else 0
         
-        # Record performance
-        self.performance_history.append({
+        if total_completed == 0:
+            return
+        
+        current_performance = {
             'timestamp': time.time(),
             'workers': len(self.workers),
-            'completed': total_completed,
-            'failed': total_failed,
-            'error_rate': error_rate
-        })
+            'completed_tasks': total_completed,
+            'failed_tasks': total_failed,
+            'success_rate': total_completed / (total_completed + total_failed),
+            'avg_memory': sum(m.memory_peak for m in self.worker_metrics.values()) / len(self.worker_metrics)
+        }
+        
+        self.performance_history.append(current_performance)
         
         # Keep only recent history
         if len(self.performance_history) > 10:
             self.performance_history = self.performance_history[-10:]
-    
-    def submit_tasks(self, tasks: List[Any], task_function: Callable):
-        """Submit tasks to the pool"""
-        self.total_tasks += len(tasks)
         
-        # Store task function
-        self._current_task_function = task_function
-        
-        # Submit tasks
-        for task in tasks:
-            self.task_queue.put(task)
+        # Simple auto-tuning logic
+        if len(self.performance_history) >= 3:
+            recent_success_rates = [p['success_rate'] for p in self.performance_history[-3:]]
+            avg_success_rate = sum(recent_success_rates) / len(recent_success_rates)
+            
+            if avg_success_rate < 0.8 and len(self.workers) > 1:
+                # Reduce workers if success rate is low
+                self._adjust_worker_count(len(self.workers) - 1)
+            elif avg_success_rate > 0.95 and len(self.workers) < 1:
+                # Increase workers if success rate is high
+                self._adjust_worker_count(len(self.workers) + 1)
     
-    def get_results(self, timeout: Optional[float] = None) -> List[Any]:
-        """Get all results"""
-        results = []
+    def _adjust_worker_count(self, new_count: int):
+        """Adjust the number of workers"""
+        current_count = len(self.workers)
+        
+        if new_count > current_count:
+            # Add workers
+            for worker_id in range(current_count, new_count):
+                self._start_worker(worker_id)
+            print(f"📈 Increased workers from {current_count} to {new_count}")
+        
+        elif new_count < current_count:
+            # Remove workers
+            workers_to_remove = list(self.workers.keys())[new_count:]
+            for worker_id in workers_to_remove:
+                try:
+                    self.workers[worker_id].terminate()
+                    self.workers[worker_id].join(timeout=5)
+                    del self.workers[worker_id]
+                except:
+                    pass
+            print(f"📉 Decreased workers from {current_count} to {new_count}")
+    
+    def map(self, func: Callable, iterable, timeout: Optional[float] = None) -> List[Any]:
+        """
+        Map function over iterable using the process pool
+        
+        Args:
+            func: Function to apply
+            iterable: Iterable of items to process
+            timeout: Optional timeout for the entire operation
+        
+        Returns:
+            List of results
+        """
+        if not self.is_running:
+            self.start()
+        
+        items = list(iterable)
+        self.total_tasks = len(items)
+        
+        # Submit all tasks
+        for item in items:
+            self.task_queue.put((func, item))
+        
+        # Collect results
+        results = [None] * len(items)
+        completed = 0
         start_time = time.time()
         
-        while len(results) < self.total_tasks:
+        while completed < len(items):
             try:
-                result_timeout = 1.0 if timeout is None else min(1.0, timeout - (time.time() - start_time))
-                if result_timeout <= 0:
-                    break
-                    
-                worker_id, task, result, error = self.result_queue.get(timeout=result_timeout)
+                # Check timeout
+                if timeout and (time.time() - start_time) > timeout:
+                    raise TimeoutError(f"Operation timed out after {timeout} seconds")
                 
-                if error is None:
-                    results.append(result)
-                    self.completed_tasks += 1
-                else:
-                    self.failed_tasks += 1
-                    
+                # Get result
+                worker_id, original_task, result, error = self.result_queue.get(timeout=1.0)
+                
+                # Find original index
+                original_item = original_task[1] if isinstance(original_task, tuple) else original_task
+                try:
+                    index = items.index(original_item)
+                    if error is None:
+                        results[index] = result
+                        self.completed_tasks += 1
+                    else:
+                        results[index] = error  # or raise exception
+                        self.failed_tasks += 1
+                    completed += 1
+                except ValueError:
+                    # Item not found in original list
+                    pass
+                
             except queue.Empty:
-                if timeout and time.time() - start_time > timeout:
-                    break
                 continue
         
         return results
     
-    def shutdown(self, wait: bool = True):
-        """Shutdown the process pool"""
+    def close(self):
+        """Close the process pool"""
         if not self.is_running:
             return
+        
+        print("🛑 Shutting down AutoRobustProcessPool...")
         
         self.is_running = False
         self.stop_event.set()
         
         # Send poison pills
-        for _ in range(self.max_workers):
+        for _ in range(len(self.workers)):
             self.task_queue.put(None)
         
         # Wait for workers to finish
-        if wait:
-            for worker in self.workers.values():
-                worker.join(timeout=5.0)
-                if worker.is_alive():
-                    worker.terminate()
+        for worker_id, process in self.workers.items():
+            try:
+                process.join(timeout=5)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=2)
+            except:
+                pass
         
         # Clean up
         self.workers.clear()
-        self.manager.shutdown()
+        self.worker_metrics.clear()
         
-        print("🛑 AutoRobustProcessPool shutdown complete")
+        print("✅ AutoRobustProcessPool shut down complete")
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_statistics(self) -> Dict[str, Any]:
         """Get pool statistics"""
         runtime = time.time() - self.start_time if self.start_time else 0
         
         return {
+            'is_running': self.is_running,
             'workers': len(self.workers),
             'total_tasks': self.total_tasks,
             'completed_tasks': self.completed_tasks,
             'failed_tasks': self.failed_tasks,
-            'success_rate': self.completed_tasks / self.total_tasks if self.total_tasks > 0 else 0,
+            'success_rate': self.completed_tasks / max(1, self.total_tasks),
             'runtime': runtime,
-            'tasks_per_second': self.completed_tasks / runtime if runtime > 0 else 0,
-            'worker_metrics': dict(self.worker_metrics)
+            'tasks_per_second': self.completed_tasks / max(1, runtime),
+            'worker_metrics': {k: v.__dict__ for k, v in self.worker_metrics.items()},
+            'performance_history': self.performance_history[-5:]  # Last 5 entries
         }
+    
+    def __enter__(self):
+        """Context manager entry"""
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.close()
 
 
-# === HAUPTFUNKTIONEN FÜR IMPORT ===
-
-def auto_pool(max_workers: Optional[int] = None, 
-              workload_type: str = 'general',
-              **kwargs) -> AutoRobustProcessPool:
+# Convenience functions
+def robust_map(func: Callable, iterable, 
+               max_workers: Optional[int] = None,
+               workload_type: str = 'general',
+               timeout: Optional[float] = None) -> List[Any]:
     """
-    Create an automatic robust process pool
+    Robust parallel map with automatic error recovery
     
     Args:
-        max_workers: Maximum number of workers (auto-detected if None)
-        workload_type: Type of workload ('general', 'cpu_intensive', 'memory_intensive')
-        **kwargs: Additional arguments for AutoRobustProcessPool
-    
-    Returns:
-        AutoRobustProcessPool instance
-    """
-    if max_workers is None:
-        if workload_type == 'cpu_intensive':
-            max_workers = OPTIMAL_WORKERS
-        elif workload_type == 'memory_intensive':
-            max_workers = max(1, OPTIMAL_WORKERS // 2)
-        else:
-            max_workers = min(OPTIMAL_WORKERS, 4)
-    
-    return AutoRobustProcessPool(
-        max_workers=max_workers,
-        workload_type=workload_type,
-        **kwargs
-    )
-
-
-def process_batch(tasks: List[Any], 
-                  task_function: Callable,
-                  max_workers: Optional[int] = None,
-                  timeout: Optional[float] = None,
-                  show_progress: bool = True) -> List[Any]:
-    """
-    Process a batch of tasks with automatic pool management
-    
-    Args:
-        tasks: List of tasks to process
-        task_function: Function to process each task
-        max_workers: Number of workers (auto-detected if None)
-        timeout: Timeout in seconds
-        show_progress: Show progress bar
+        func: Function to apply
+        iterable: Iterable of items
+        max_workers: Maximum number of workers
+        workload_type: Type of workload
+        timeout: Operation timeout
     
     Returns:
         List of results
     """
-    pool = auto_pool(max_workers=max_workers)
-    
-    try:
-        pool.start()
-        pool.submit_tasks(tasks, task_function)
+    with AutoRobustProcessPool(
+        max_workers=max_workers,
+        workload_type=workload_type,
+        enable_monitoring=True,
+        auto_tune=True
+    ) as pool:
+        async_result = pool.map_async(func, iterable)
+        try:
+            return async_result.get(timeout=timeout)
+        except mp.TimeoutError:
+            print("⚠️ Timeout erreicht, breche ab...")
+            pool.terminate()
+            pool.join()
+            raise TimeoutError("Operation timed out")
+            #return pool.map(func, iterable, timeout)
+
+'''
+if __name__ == "__main__":
+    # Demo
+    def test_function(x):
+        """Test function for demonstration"""
+        import time
+        import random
         
-        if show_progress:
-            try:
-                import tqdm
-                with tqdm.tqdm(total=len(tasks), desc="Processing") as pbar:
-                    results = []
-                    while len(results) < len(tasks):
-                        batch_results = pool.get_results(timeout=1.0)
-                        new_results = len(batch_results) - len(results)
-                        if new_results > 0:
-                            pbar.update(new_results)
-                        results = batch_results
-                    return results
-            except ImportError:
-                return pool.get_results(timeout=timeout)
-        else:
-            return pool.get_results(timeout=timeout)
+        # Simulate work
+        time.sleep(random.uniform(0.1, 0.5))
+        
+        # Simulate occasional errors
+        if random.random() < 0.1:
+            raise ValueError(f"Simulated error for {x}")
+        
+        return x * x
     
-    finally:
-        pool.shutdown()
-
-
-# Convenience functions
-def get_system_info() -> Dict[str, Any]:
-    """Get system information for optimization"""
-    info = {
-        'cpu_count': mp.cpu_count(),
-        'optimal_workers': OPTIMAL_WORKERS,
-        'optimal_threads': OPTIMAL_THREADS,
-        'platform': platform.system(),
-        'mp_method': mp.get_start_method(),
-        'has_psutil': HAS_PSUTIL
-    }
+    print("🧪 Testing AutoRobustProcessPool...")
     
-    if HAS_PSUTIL:
-        info.update({
-            'memory_total_gb': psutil.virtual_memory().total / (1024**3),
-            'memory_available_gb': psutil.virtual_memory().available / (1024**3),
-            'cpu_freq_mhz': psutil.cpu_freq().current if psutil.cpu_freq() else None
-        })
+    # Test with robust map
+    items = list(range(20))
+    results = robust_map(test_function, items, max_workers=4, timeout=30)
     
-    return info
-
-
-# Export main functions
-__all__ = [
-    'auto_pool',
-    'process_batch', 
-    'AutoRobustProcessPool',
-    'ProcessMetrics',
-    'get_system_info',
-    'OPTIMAL_WORKERS',
-    'OPTIMAL_THREADS'
-]
+    print(f"✅ Processed {len(items)} items")
+    print(f"📊 Results: {results[:5]}... (showing first 5)")
+'''
