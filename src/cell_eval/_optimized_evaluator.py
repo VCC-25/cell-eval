@@ -90,7 +90,7 @@ class OptimizedMetricsEvaluator:
         self.enable_caching = enable_caching
         self.parallel_io = parallel_io
         self.memory_efficient = memory_efficient
-        self.max_workers = max_workers or min(8, mp.cpu_count())
+        self.max_workers = max_workers or min(2, mp.cpu_count())
         
         # Setup output directory
         if os.path.exists(outdir):

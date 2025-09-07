@@ -209,7 +209,7 @@ class RobustProcessPool:
         **kwargs
     ):
         
-        self.max_workers = max_workers or min(8, os.cpu_count() or 4)
+        self.max_workers = max_workers or min(2, os.cpu_count() or 4)
         self.max_memory_per_process = max_memory_per_process
         self.process_timeout = process_timeout
         self.enable_monitoring = enable_monitoring and PSUTIL_AVAILABLE
