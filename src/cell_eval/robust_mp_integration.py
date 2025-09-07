@@ -32,12 +32,35 @@ except ImportError:
 # === PDEX SPEED OPTIMIZATION START ===
 #import os
 #import multiprocessing as mp
+# === ECHTE PARALLELISIERUNG SETUP ===
+import os
+import multiprocessing as mp
+import psutil
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Force single-threading for PDEX
-os.environ['OMP_NUM_THREADS'] = '1'
-os.environ['MKL_NUM_THREADS'] = '1'
-os.environ['NUMEXPR_NUM_THREADS'] = '1'
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
+# Intelligente Ressourcen-Erkennung
+def get_optimal_workers():
+    cpu_count = mp.cpu_count()
+    memory_gb = psutil.virtual_memory().available / (1024**3)
+    
+    if memory_gb > 16:  # Viel RAM
+        return min(cpu_count, 8)
+    elif memory_gb > 8:  # Mittlerer RAM
+        return min(cpu_count, 4)
+    else:  # Wenig RAM
+        return min(cpu_count, 2)
+
+OPTIMAL_WORKERS = get_optimal_workers()
+OPTIMAL_THREADS = max(1, OPTIMAL_WORKERS // 2)
+
+# Multi-Threading Environment
+os.environ['OMP_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['MKL_NUM_THREADS'] = str(OPTIMAL_THREADS) 
+os.environ['NUMEXPR_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['OPENBLAS_NUM_THREADS'] = str(OPTIMAL_THREADS)
+
+print(f"🚀 Parallelisierung: {OPTIMAL_WORKERS} Workers, {OPTIMAL_THREADS} Threads/Worker")
+# === ENDE SETUP ===
 
 # Set multiprocessing method
 try:
@@ -585,9 +608,17 @@ def robust_map(func: Callable, iterable,
         enable_monitoring=True,
         auto_tune=True
     ) as pool:
-        return pool.map(func, iterable, timeout)
+        async_result = pool.map_async(func, iterable)
+        try:
+            return async_result.get(timeout=timeout)
+        except mp.TimeoutError:
+            print("⚠️ Timeout erreicht, breche ab...")
+            pool.terminate()
+            pool.join()
+            raise TimeoutError("Operation timed out")
+            #return pool.map(func, iterable, timeout)
 
-
+'''
 if __name__ == "__main__":
     # Demo
     def test_function(x):
@@ -612,3 +643,4 @@ if __name__ == "__main__":
     
     print(f"✅ Processed {len(items)} items")
     print(f"📊 Results: {results[:5]}... (showing first 5)")
+'''

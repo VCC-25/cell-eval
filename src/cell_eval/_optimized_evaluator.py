@@ -53,16 +53,35 @@ except ImportError:
     ENHANCED_MP_AVAILABLE = False
     warnings.warn("Enhanced multiprocessing not available. Using standard implementation.")
 
-# === PDEX SPEED OPTIMIZATION START ===
-#import os
+# === ECHTE PARALLELISIERUNG SETUP ===
+import os
 import multiprocessing as mp
+import psutil
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Force single-threading for PDEX
-os.environ['OMP_NUM_THREADS'] = '1'
-os.environ['MKL_NUM_THREADS'] = '1'
-os.environ['NUMEXPR_NUM_THREADS'] = '1'
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
+# Intelligente Ressourcen-Erkennung
+def get_optimal_workers():
+    cpu_count = mp.cpu_count()
+    memory_gb = psutil.virtual_memory().available / (1024**3)
+    
+    if memory_gb > 16:  # Viel RAM
+        return min(cpu_count, 8)
+    elif memory_gb > 8:  # Mittlerer RAM
+        return min(cpu_count, 4)
+    else:  # Wenig RAM
+        return min(cpu_count, 2)
 
+OPTIMAL_WORKERS = get_optimal_workers()
+OPTIMAL_THREADS = max(1, OPTIMAL_WORKERS // 2)
+
+# Multi-Threading Environment
+os.environ['OMP_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['MKL_NUM_THREADS'] = str(OPTIMAL_THREADS) 
+os.environ['NUMEXPR_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['OPENBLAS_NUM_THREADS'] = str(OPTIMAL_THREADS)
+
+print(f"🚀 Parallelisierung: {OPTIMAL_WORKERS} Workers, {OPTIMAL_THREADS} Threads/Worker")
+# === ENDE SETUP ===
 # Set multiprocessing method
 try:
     mp.set_start_method('spawn', force=True)
@@ -547,8 +566,17 @@ def _build_de_comparison_optimized(
                 num_threads, batch_size, outdir, prefix, pdex_kwargs
             )
             
+            from concurrent.futures import as_completed
+            print("🚀 Warte auf parallele Verarbeitung...")
+            for future in as_completed([real_future, pred_future]):
+                pass  # Lässt beide parallel laufen
             de_real_result = real_future.result()
             de_pred_result = pred_future.result()
+            print("✅ Beide Jobs parallel abgeschlossen")
+            #de_real_result = real_future.result()
+            #de_pred_result = pred_future.result()
+                
+
     else:
         # Sequential computation
         de_real_result = _load_or_build_de_optimized(

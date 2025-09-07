@@ -34,15 +34,35 @@ except ImportError:
     HAS_CPUINFO = False
 
 # === PDEX SPEED OPTIMIZATION START ===
-#import os
-#import multiprocessing as mp
+# === ECHTE PARALLELISIERUNG SETUP ===
+import os
+import multiprocessing as mp
+import psutil
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Force single-threading for PDEX
-os.environ['OMP_NUM_THREADS'] = '1'
-os.environ['MKL_NUM_THREADS'] = '1'
-os.environ['NUMEXPR_NUM_THREADS'] = '1'
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
+# Intelligente Ressourcen-Erkennung
+def get_optimal_workers():
+    cpu_count = mp.cpu_count()
+    memory_gb = psutil.virtual_memory().available / (1024**3)
+    
+    if memory_gb > 16:  # Viel RAM
+        return min(cpu_count, 8)
+    elif memory_gb > 8:  # Mittlerer RAM
+        return min(cpu_count, 4)
+    else:  # Wenig RAM
+        return min(cpu_count, 2)
 
+OPTIMAL_WORKERS = get_optimal_workers()
+OPTIMAL_THREADS = max(1, OPTIMAL_WORKERS // 2)
+
+# Multi-Threading Environment
+os.environ['OMP_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['MKL_NUM_THREADS'] = str(OPTIMAL_THREADS) 
+os.environ['NUMEXPR_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['OPENBLAS_NUM_THREADS'] = str(OPTIMAL_THREADS)
+
+print(f"🚀 Parallelisierung: {OPTIMAL_WORKERS} Workers, {OPTIMAL_THREADS} Threads/Worker")
+# === ENDE SETUP ===
 # Set multiprocessing method
 try:
     mp.set_start_method('spawn', force=True)

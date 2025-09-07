@@ -44,11 +44,35 @@ logger = logging.getLogger(__name__)
 #import os
 import multiprocessing as mp
 
-# Force single-threading for PDEX
-os.environ['OMP_NUM_THREADS'] = '1'
-os.environ['MKL_NUM_THREADS'] = '1'
-os.environ['NUMEXPR_NUM_THREADS'] = '1'
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
+# === ECHTE PARALLELISIERUNG SETUP ===
+import os
+import multiprocessing as mp
+import psutil
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+# Intelligente Ressourcen-Erkennung
+def get_optimal_workers():
+    cpu_count = mp.cpu_count()
+    memory_gb = psutil.virtual_memory().available / (1024**3)
+    
+    if memory_gb > 16:  # Viel RAM
+        return min(cpu_count, 8)
+    elif memory_gb > 8:  # Mittlerer RAM
+        return min(cpu_count, 4)
+    else:  # Wenig RAM
+        return min(cpu_count, 2)
+
+OPTIMAL_WORKERS = get_optimal_workers()
+OPTIMAL_THREADS = max(1, OPTIMAL_WORKERS // 2)
+
+# Multi-Threading Environment
+os.environ['OMP_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['MKL_NUM_THREADS'] = str(OPTIMAL_THREADS) 
+os.environ['NUMEXPR_NUM_THREADS'] = str(OPTIMAL_THREADS)
+os.environ['OPENBLAS_NUM_THREADS'] = str(OPTIMAL_THREADS)
+
+print(f"🚀 Parallelisierung: {OPTIMAL_WORKERS} Workers, {OPTIMAL_THREADS} Threads/Worker")
+# === ENDE SETUP ===
 
 # Set multiprocessing method
 try:
@@ -499,9 +523,13 @@ def setup_robust_multiprocessing(
         
         # Set environment variables for better multiprocessing
         os.environ['PYTHONHASHSEED'] = '0'  # Reproducible hashing
-        os.environ['OMP_NUM_THREADS'] = '1'  # Prevent thread conflicts
-        os.environ['MKL_NUM_THREADS'] = '1'
-        os.environ['NUMEXPR_NUM_THREADS'] = '1'
+        import psutil
+        available_cores = min(4, psutil.cpu_count())
+        os.environ['OMP_NUM_THREADS'] = str(available_cores)
+        os.environ['MKL_NUM_THREADS'] = str(available_cores)
+        os.environ['NUMEXPR_NUM_THREADS'] = str(available_cores)
+        print(f"🚀 Multi-Threading aktiviert: {available_cores} Threads pro Prozess")
+        #os.environ['NUMEXPR_NUM_THREADS'] = '1'
         
         # GPU environment
         if 'CUDA_VISIBLE_DEVICES' not in os.environ:
