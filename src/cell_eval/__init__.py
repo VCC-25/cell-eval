@@ -1,6 +1,6 @@
 from ._baseline import build_base_mean_adata
-#from ._evaluator import MetricsEvaluator
-from ._optimized_evaluator import OptimizedMetricsEvaluator
+from ._evaluator import MetricsEvaluator
+#from ._optimized_evaluator import OptimizedMetricsEvaluator
 from ._pipeline import KNOWN_PROFILES, MetricPipeline
 from ._score import score_agg_metrics
 from ._types import (
@@ -17,9 +17,7 @@ from .metrics import metrics_registry
 
 __all__ = [
     # Evaluation
-    "OptimizedMetricsEvaluator",
-    "_build_pdex_kwargs", 
-    "_convert_to_normlog_optimized",    
+    "MetricsEvaluator",
     # Baseline
     "build_base_mean_adata",
     # Scoring
