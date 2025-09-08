@@ -474,6 +474,30 @@ def compute(
     
     return results, agg_results
 
+def _build_pdex_kwargs_optimized(
+    reference: str,
+    groupby_key: str,
+    num_workers: int,
+    batch_size: int,
+    metric: str,
+    pdex_kwargs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build optimized pdex kwargs with defaults"""
+    pdex_kwargs = pdex_kwargs or {}
+    if "reference" not in pdex_kwargs:
+        pdex_kwargs["reference"] = reference
+    if "groupby_key" not in pdex_kwargs:
+        pdex_kwargs["groupby_key"] = groupby_key
+    if "num_workers" not in pdex_kwargs:
+        pdex_kwargs["num_workers"] = num_workers
+    if "batch_size" not in pdex_kwargs:
+        pdex_kwargs["batch_size"] = batch_size
+    if "metric" not in pdex_kwargs:
+        pdex_kwargs["metric"] = metric
+    # always return polars DataFrames
+    pdex_kwargs["as_polars"] = True
+    return pdex_kwargs
+
 def _write_results_optimized(
     self, 
     results: pl.DataFrame, 
