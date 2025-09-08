@@ -644,6 +644,46 @@ def compute_de_scanpy_safe(adata, **kwargs):
     print("✅ DE computation completed successfully")
     return adata.uns['rank_genes_groups']
 
+def emergency_diagnosis(adata, groupby_col='condition'):
+    """Emergency diagnosis when everything hangs"""
+    print("🚨 EMERGENCY DIAGNOSIS")
+    print("=" * 50)
+    
+    # 1. Basic info
+    print(f"Shape: {adata.shape}")
+    print(f"Data type: {type(adata.X)}")
+    
+    # 2. Check groupby column
+    if groupby_col not in adata.obs.columns:
+        print(f"❌ '{groupby_col}' not found!")
+        print(f"Available: {list(adata.obs.columns)}")
+        return False
+    
+    unique_groups = adata.obs[groupby_col].unique()
+    print(f"Groups: {unique_groups}")
+    
+    if len(unique_groups) < 2:
+        print(f"❌ Only {len(unique_groups)} groups!")
+        return False
+    
+    # 3. Check for NaN/Inf
+    if hasattr(adata.X, 'toarray'):
+        X_sample = adata.X[:100, :100].toarray()  # Small sample
+    else:
+        X_sample = adata.X[:100, :100]
+    
+    nan_count = np.isnan(X_sample).sum()
+    inf_count = np.isinf(X_sample).sum()
+    
+    print(f"NaN in sample: {nan_count}")
+    print(f"Inf in sample: {inf_count}")
+    
+    if nan_count > 0 or inf_count > 0:
+        print("❌ Data corruption detected!")
+        return False
+    
+    print("✅ Basic diagnosis passed")
+    return True
 
 
 def _load_or_build_de_optimized(
@@ -693,7 +733,8 @@ def _load_or_build_de_optimized(
         #return parallel_differential_expression(adata=adata, **pdex_kwargs_safe)
         #return parallel_differential_expression(adata=adata, **pdex_kwargs)
             # Use the safe function
-        return compute_de_scanpy_safe(adata, **pdex_kwargs)
+        #return compute_de_scanpy_safe(adata, **pdex_kwargs)
+        diagnosis_ok = emergency_diagnosis(adata, pdex_kwargs.get('groupby', 'condition'))
 
         #else:
         #    return parallel_differential_expression(adata=adata, **pdex_kwargs)
