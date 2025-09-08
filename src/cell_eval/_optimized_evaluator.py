@@ -653,7 +653,10 @@ def _load_or_build_de_optimized(
     try:
         #if ROBUST_MP_AVAILABLE:
         #    with robust_training_context():
-        return parallel_differential_expression(adata=adata, **pdex_kwargs)
+        pdex_kwargs_safe = pdex_kwargs.copy()
+        pdex_kwargs_safe['n_jobs'] = 1  # Force single-threaded
+        return parallel_differential_expression(adata=adata, **pdex_kwargs_safe)
+        #return parallel_differential_expression(adata=adata, **pdex_kwargs)
         #else:
         #    return parallel_differential_expression(adata=adata, **pdex_kwargs)
     except Exception as e:
