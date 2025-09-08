@@ -58,7 +58,7 @@ import os
 import multiprocessing as mp
 import psutil
 #from concurrent.futures import ProcessPoolExecutor, as_completed
-from concurrent.futures import ThreadPoolExecutor as ProcessPoolExecutor
+#from concurrent.futures import ThreadPoolExecutor as ProcessPoolExecutor
 
 
 # Intelligente Ressourcen-Erkennung
@@ -150,6 +150,7 @@ class OptimizedMetricsEvaluator:
         parallel_io: bool = True,
         memory_efficient: bool = True,
         max_workers: Optional[int] = None,
+        **kwargs
     ):
         start_time = time.time()
         
@@ -206,6 +207,16 @@ class OptimizedMetricsEvaluator:
         self.outdir = outdir
         self.prefix = prefix
         
+        # Add these new attributes
+        self._enhanced_mp_enabled = ENHANCED_MP_AVAILABLE
+        self._dynamic_adapter = None
+        self._auto_pool = None
+        self._performance_history = []
+        
+        # Initialize enhanced multiprocessing if available
+        if self._enhanced_mp_enabled and kwargs.get('enable_enhanced_mp', True):
+            self._initialize_enhanced_mp(kwargs.get('workload_type', 'general'))
+
         init_time = time.time() - start_time
         logger.info(f"✅ OptimizedMetricsEvaluator initialized in {init_time:.2f}s")
         
@@ -256,7 +267,7 @@ class OptimizedMetricsEvaluator:
         
         return results, agg_results
     
-    def __init__(self, *args, **kwargs):
+    '''def __init__(self, *args, **kwargs):
         # Your existing __init__ code...
         
         # Add these new attributes at the end of __init__
@@ -268,7 +279,7 @@ class OptimizedMetricsEvaluator:
         # Initialize enhanced multiprocessing if available
         if self._enhanced_mp_enabled and kwargs.get('enable_enhanced_mp', True):
             self._initialize_enhanced_mp(kwargs.get('workload_type', 'general'))
-    
+    '''
     def _initialize_enhanced_mp(self, workload_type: str = 'general'):
         """Initialize enhanced multiprocessing components"""
         try:
