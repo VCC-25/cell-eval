@@ -145,7 +145,7 @@ def _build_anndata_pair_optimized(
     
     if self.parallel_io and isinstance(real, str) and isinstance(pred, str):
         # Parallel loading
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor (max_workers=2) as executor:
             logger.info("🔄 Loading AnnData objects in parallel...")
             real_future = executor.submit(self._load_anndata, real, "real")
             pred_future = executor.submit(self._load_anndata, pred, "pred")
@@ -159,7 +159,7 @@ def _build_anndata_pair_optimized(
 
     # Parallel normalization validation
     if self.parallel_io:
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor (max_workers=2) as executor:
             logger.info("🔄 Validating normalization in parallel...")
             real_future = executor.submit(
                 self._convert_to_normlog_optimized, 
@@ -443,7 +443,7 @@ def compute(
 
     # Parallel metric computation if enabled
     if parallel_metrics and self.parallel_io:
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor (max_workers=2) as executor:
             logger.info("🔄 Computing metrics in parallel...")
             
             de_future = executor.submit(
@@ -493,7 +493,7 @@ def _write_results_optimized(
 
     if self.parallel_io:
         # Parallel writing
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor (max_workers=2) as executor:
             logger.info("💾 Writing results in parallel...")
             
             main_future = executor.submit(

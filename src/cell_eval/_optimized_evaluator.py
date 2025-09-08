@@ -477,7 +477,7 @@ def _build_anndata_pair_optimized(
     
     if parallel_io and isinstance(real, str) and isinstance(pred, str):
         # Parallel loading
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor (max_workers=2) as executor:
             logger.info("🔄 Loading AnnData objects in parallel...")
             real_future = executor.submit(_load_anndata_optimized, real, "real")
             pred_future = executor.submit(_load_anndata_optimized, pred, "pred")
@@ -491,7 +491,7 @@ def _build_anndata_pair_optimized(
 
     # Parallel normalization validation
     if parallel_io:
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor (max_workers=2) as executor:
             logger.info("🔄 Validating normalization in parallel...")
             real_future = executor.submit(
                 _convert_to_normlog_optimized, 
@@ -648,14 +648,14 @@ def _load_or_build_de_optimized(
         metric=de_method,
         pdex_kwargs=pdex_kwargs or {},
     )
-    
+    logger.info(f"ROBUST_MP_AVAILABLE: {ROBUST_MP_AVAILABLE}")
     # Robust DE computation with retry logic
     try:
-        if ROBUST_MP_AVAILABLE:
-            with robust_training_context():
-                return parallel_differential_expression(adata=adata, **pdex_kwargs)
-        else:
-            return parallel_differential_expression(adata=adata, **pdex_kwargs)
+        #if ROBUST_MP_AVAILABLE:
+        #    with robust_training_context():
+        return parallel_differential_expression(adata=adata, **pdex_kwargs)
+        #else:
+        #    return parallel_differential_expression(adata=adata, **pdex_kwargs)
     except Exception as e:
         logger.warning(f"DE computation failed for {mode}: {e}")
         logger.info(f"Retrying {mode} DE with reduced workers...")
