@@ -474,70 +474,70 @@ class OptimizedMetricsEvaluator:
         
         return results, agg_results
 
-    def _build_pdex_kwargs_optimized(
-        reference: str,
-        groupby_key: str,
-        num_workers: int,
-        batch_size: int,
-        metric: str,
-        pdex_kwargs: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Build optimized pdex kwargs with defaults"""
-        pdex_kwargs = pdex_kwargs or {}
-        if "reference" not in pdex_kwargs:
-            pdex_kwargs["reference"] = reference
-        if "groupby_key" not in pdex_kwargs:
-            pdex_kwargs["groupby_key"] = groupby_key
-        if "num_workers" not in pdex_kwargs:
-            pdex_kwargs["num_workers"] = num_workers
-        if "batch_size" not in pdex_kwargs:
-            pdex_kwargs["batch_size"] = batch_size
-        if "metric" not in pdex_kwargs:
-            pdex_kwargs["metric"] = metric
-        # always return polars DataFrames
-        pdex_kwargs["as_polars"] = True
-        return pdex_kwargs
+def _build_pdex_kwargs_optimized(
+    reference: str,
+    groupby_key: str,
+    num_workers: int,
+    batch_size: int,
+    metric: str,
+    pdex_kwargs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build optimized pdex kwargs with defaults"""
+    pdex_kwargs = pdex_kwargs or {}
+    if "reference" not in pdex_kwargs:
+        pdex_kwargs["reference"] = reference
+    if "groupby_key" not in pdex_kwargs:
+        pdex_kwargs["groupby_key"] = groupby_key
+    if "num_workers" not in pdex_kwargs:
+        pdex_kwargs["num_workers"] = num_workers
+    if "batch_size" not in pdex_kwargs:
+        pdex_kwargs["batch_size"] = batch_size
+    if "metric" not in pdex_kwargs:
+        pdex_kwargs["metric"] = metric
+    # always return polars DataFrames
+    pdex_kwargs["as_polars"] = True
+    return pdex_kwargs
 
-    def _write_results_optimized(
-        self, 
-        results: pl.DataFrame, 
-        agg_results: pl.DataFrame, 
-        basename: str
-    ):
-        """Optimized result writing with parallel I/O"""
-        
-        outpath = os.path.join(
-            self.outdir,
-            f"{self.prefix}_{basename}" if self.prefix else basename,
-        )
-        agg_outpath = os.path.join(
-            self.outdir,
-            f"{self.prefix}_agg_{basename}" if self.prefix else f"agg_{basename}",
-        )
+def _write_results_optimized(
+    self, 
+    results: pl.DataFrame, 
+    agg_results: pl.DataFrame, 
+    basename: str
+):
+    """Optimized result writing with parallel I/O"""
+    
+    outpath = os.path.join(
+        self.outdir,
+        f"{self.prefix}_{basename}" if self.prefix else basename,
+    )
+    agg_outpath = os.path.join(
+        self.outdir,
+        f"{self.prefix}_agg_{basename}" if self.prefix else f"agg_{basename}",
+    )
 
-        if self.parallel_io:
-            # Parallel writing
-            with ProcessPoolExecutor (max_workers=2) as executor:
-                logger.info("💾 Writing results in parallel...")
-                
-                main_future = executor.submit(
-                    self._write_csv_safe, results, outpath, "perturbation level"
-                )
-                agg_future = executor.submit(
-                    self._write_csv_safe, agg_results, agg_outpath, "aggregate"
-                )
-                
-                main_future.result()
-                agg_future.result()
-        else:
-            # Sequential writing
-            self._write_csv_safe(results, outpath, "perturbation level")
-            self._write_csv_safe(agg_results, agg_outpath, "aggregate")
+    if self.parallel_io:
+        # Parallel writing
+        with ProcessPoolExecutor (max_workers=2) as executor:
+            logger.info("💾 Writing results in parallel...")
+            
+            main_future = executor.submit(
+                self._write_csv_safe, results, outpath, "perturbation level"
+            )
+            agg_future = executor.submit(
+                self._write_csv_safe, agg_results, agg_outpath, "aggregate"
+            )
+            
+            main_future.result()
+            agg_future.result()
+    else:
+        # Sequential writing
+        self._write_csv_safe(results, outpath, "perturbation level")
+        self._write_csv_safe(agg_results, agg_outpath, "aggregate")
 
-    def _write_csv_safe(self, df: pl.DataFrame, path: str, description: str):
-        """Safe CSV writing with error handling"""
-        try:
-            logger.info(f"💾 Writing {description} metrics to {path}")
-            df.write_csv(path)
-        except Exception as e:
-            logger.error(f"Failed to write {description} results: {e}")
+def _write_csv_safe(self, df: pl.DataFrame, path: str, description: str):
+    """Safe CSV writing with error handling"""
+    try:
+        logger.info(f"💾 Writing {description} metrics to {path}")
+        df.write_csv(path)
+    except Exception as e:
+        logger.error(f"Failed to write {description} results: {e}")
