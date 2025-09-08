@@ -610,6 +610,41 @@ def _build_de_comparison_optimized(
 
     return initialize_de_comparison(real=de_real_result, pred=de_pred_result)
 
+def compute_de_scanpy_safe(adata, **kwargs):
+    """Safe DE computation using scanpy directly"""
+    import scanpy as sc
+    import warnings
+    
+    print("🔄 Computing DE with scanpy (safe method)...")
+    
+    # Extract parameters
+    groupby = kwargs.get('groupby', 'condition')
+    method = kwargs.get('method', 'wilcoxon')
+    n_genes = kwargs.get('n_genes', None)
+    
+    # Validate groupby column
+    if groupby not in adata.obs.columns:
+        available_cols = list(adata.obs.columns)
+        raise ValueError(f"Groupby column '{groupby}' not found. Available: {available_cols}")
+    
+    # Suppress warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        
+        # Compute DE with scanpy
+        sc.tl.rank_genes_groups(
+            adata,
+            groupby=groupby,
+            method=method,
+            n_genes=n_genes,
+            use_raw=False,
+            key_added='rank_genes_groups'
+        )
+    
+    print("✅ DE computation completed successfully")
+    return adata.uns['rank_genes_groups']
+
+
 
 def _load_or_build_de_optimized(
     mode: Literal["pred", "real"],
@@ -657,7 +692,9 @@ def _load_or_build_de_optimized(
         #pdex_kwargs_safe['n_jobs'] = 1  # Force single-threaded
         #return parallel_differential_expression(adata=adata, **pdex_kwargs_safe)
         #return parallel_differential_expression(adata=adata, **pdex_kwargs)
-        import scanpy as sc; sc.tl.rank_genes_groups(adata, groupby=pdex_kwargs.get('groupby', 'condition'), method=pdex_kwargs.get('method', 'wilcoxon')); return adata.uns['rank_genes_groups']
+            # Use the safe function
+        return compute_de_scanpy_safe(adata, **pdex_kwargs)
+
         #else:
         #    return parallel_differential_expression(adata=adata, **pdex_kwargs)
     except Exception as e:
