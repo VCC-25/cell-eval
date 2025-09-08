@@ -189,36 +189,7 @@ class OptimizedMetricsEvaluator:
         logger.info(f"📖 Loading {which} anndata from {path}")
         return ad.read_h5ad(path)
 
-    def _convert_to_normlog_optimized(
-        self,
-        adata: ad.AnnData,
-        which: str,
-        allow_discrete: bool = False,
-        n_cells: int = 100,  # Reduced for faster check
-    ):
-        """Optimized normalization with faster validation"""
-        
-        # Fast discrete check with sampling
-        if self.memory_efficient and adata.n_obs > n_cells:
-            # Sample for faster validation
-            sample_idx = np.random.choice(adata.n_obs, n_cells, replace=False)
-            sample_adata = adata[sample_idx].copy()
-            is_lognorm = guess_is_lognorm(adata=sample_adata, n_cells=n_cells)
-        else:
-            is_lognorm = guess_is_lognorm(adata=adata, n_cells=n_cells)
-        
-        if is_lognorm:
-            logger.debug(f"✅ {which} data already log-normalized")
-            return
-
-        if allow_discrete:
-            logger.info(f"⚠️ {which} discrete data allowed")
-            return
-
-        # Fast normalization
-        logger.info(f"🔄 Converting {which} to norm-log...")
-        sc.pp.normalize_total(adata=adata, inplace=True)
-        sc.pp.log1p(adata)
+    
 
     def _build_de_comparison_optimized(
         self,
@@ -474,6 +445,37 @@ class OptimizedMetricsEvaluator:
         
         return results, agg_results
 
+def _convert_to_normlog_optimized(
+        self,
+        adata: ad.AnnData,
+        which: str,
+        allow_discrete: bool = False,
+        n_cells: int = 100,  # Reduced for faster check
+    ):
+        """Optimized normalization with faster validation"""
+        
+        # Fast discrete check with sampling
+        if self.memory_efficient and adata.n_obs > n_cells:
+            # Sample for faster validation
+            sample_idx = np.random.choice(adata.n_obs, n_cells, replace=False)
+            sample_adata = adata[sample_idx].copy()
+            is_lognorm = guess_is_lognorm(adata=sample_adata, n_cells=n_cells)
+        else:
+            is_lognorm = guess_is_lognorm(adata=adata, n_cells=n_cells)
+        
+        if is_lognorm:
+            logger.debug(f"✅ {which} data already log-normalized")
+            return
+
+        if allow_discrete:
+            logger.info(f"⚠️ {which} discrete data allowed")
+            return
+
+        # Fast normalization
+        logger.info(f"🔄 Converting {which} to norm-log...")
+        sc.pp.normalize_total(adata=adata, inplace=True)
+        sc.pp.log1p(adata)
+        
 def _build_pdex_kwargs_optimized(
     reference: str,
     groupby_key: str,
