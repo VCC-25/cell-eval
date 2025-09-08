@@ -653,10 +653,11 @@ def _load_or_build_de_optimized(
     try:
         #if ROBUST_MP_AVAILABLE:
         #    with robust_training_context():
-        pdex_kwargs_safe = pdex_kwargs.copy()
-        pdex_kwargs_safe['n_jobs'] = 1  # Force single-threaded
-        return parallel_differential_expression(adata=adata, **pdex_kwargs_safe)
+        #pdex_kwargs_safe = pdex_kwargs.copy()
+        #pdex_kwargs_safe['n_jobs'] = 1  # Force single-threaded
+        #return parallel_differential_expression(adata=adata, **pdex_kwargs_safe)
         #return parallel_differential_expression(adata=adata, **pdex_kwargs)
+        import scanpy as sc; sc.tl.rank_genes_groups(adata, groupby=pdex_kwargs.get('groupby', 'condition'), method=pdex_kwargs.get('method', 'wilcoxon')); return adata.uns['rank_genes_groups']
         #else:
         #    return parallel_differential_expression(adata=adata, **pdex_kwargs)
     except Exception as e:
