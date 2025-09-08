@@ -19,6 +19,7 @@ from typing import Any, Literal, Optional
 import warnings
 
 import anndata as ad
+import numpy as np
 import pandas as pd
 import polars as pl
 import scanpy as sc
