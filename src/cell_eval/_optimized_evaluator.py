@@ -489,13 +489,16 @@ class OptimizedMetricsEvaluator:
         except Exception as e:
             logger.error(f"Failed to write {description} results: {e}")
 
+# ===============================================================================
+# BACKWARD COMPATIBILITY: Standalone functions for imports
+# ===============================================================================
 def _convert_to_normlog_optimized(
         self,
         adata: ad.AnnData,
         which: str,
         allow_discrete: bool = False,
         n_cells: int = 100,  # Reduced for faster check
-    ):
+):
     """Optimized normalization with faster validation"""
     
     # Fast discrete check with sampling
@@ -543,3 +546,15 @@ def _build_pdex_kwargs_optimized(
     # always return polars DataFrames
     pdex_kwargs["as_polars"] = True
     return pdex_kwargs
+
+# ===============================================================================
+# MODULE EXPORTS
+# ===============================================================================
+
+__all__ = [
+    "OptimizedMetricsEvaluator",
+    "_build_pdex_kwargs_optimized",
+    "_convert_to_normlog_optimized", 
+    "create_optimized_evaluator",
+    "get_evaluator_version"
+]
