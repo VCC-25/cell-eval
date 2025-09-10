@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 from pdex import parallel_differential_expression
 from scipy.sparse import issparse
 
-from ._evaluator import _build_pdex_kwargs_optimized, _convert_to_normlog_optimized
+from ._evaluator import _build_pdex_kwargs, _convert_to_normlog
 
 logger = logging.getLogger(__name__)
 
