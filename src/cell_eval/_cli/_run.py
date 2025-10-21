@@ -172,12 +172,14 @@ def run_evaluation(args: ap.Namespace):
                 outdir=args.outdir,
                 allow_discrete=args.allow_discrete,
                 prefix=ct,
+                skip_de=args.profile == "pds",
             )
             evaluator.compute(
                 profile=args.profile,
                 metric_configs=metric_kwargs,
                 skip_metrics=skip_metrics,
-                basename=f"{ct}_results.csv",
+                #basename=f"{ct}_results.csv",
+                basename="results.csv",
             )
 
     else:
@@ -193,6 +195,7 @@ def run_evaluation(args: ap.Namespace):
             batch_size=args.batch_size,
             outdir=args.outdir,
             allow_discrete=args.allow_discrete,
+            skip_de=args.profile == "pds",
         )
         evaluator.compute(
             profile=args.profile,

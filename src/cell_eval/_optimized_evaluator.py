@@ -70,6 +70,7 @@ class OptimizedMetricsEvaluator:
         allow_discrete: bool = False,
         prefix: str | None = None,
         pdex_kwargs: dict[str, Any] | None = None,
+        skip_de: bool = False,
         # New optimization parameters
         enable_caching: bool = True,
         parallel_io: bool = True,
@@ -108,17 +109,20 @@ class OptimizedMetricsEvaluator:
             allow_discrete=allow_discrete,
         )
 
-        self.de_comparison = self._build_de_comparison_optimized(
-            anndata_pair=self.anndata_pair,
-            de_pred=de_pred,
-            de_real=de_real,
-            de_method=de_method,
-            num_threads=num_threads,
-            batch_size=batch_size,
-            outdir=outdir,
-            prefix=prefix,
-            pdex_kwargs=pdex_kwargs or {},
-        )
+        if skip_de:
+            self.de_comparison = None
+        else:
+            self.de_comparison = self._build_de_comparison_optimized(
+                anndata_pair=self.anndata_pair,
+                de_pred=de_pred,
+                de_real=de_real,
+                de_method=de_method,
+                num_threads=num_threads,
+                batch_size=batch_size,
+                outdir=outdir,
+                prefix=prefix,
+                pdex_kwargs=pdex_kwargs or {},
+            )
 
         self.outdir = outdir
         self.prefix = prefix
